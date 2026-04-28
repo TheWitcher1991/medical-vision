@@ -12,6 +12,9 @@ build
 dist
 db.sqlite3
 
+medclsnet.pth
+*.pth
+
 venv
 
 __pycache__/
