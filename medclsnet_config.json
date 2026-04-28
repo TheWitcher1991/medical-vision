@@ -1,0 +1,14 @@
+{
+    "img_size": 224,
+    "batch_size": 16,
+    "lr": 0.0001,
+    "epochs": 10,
+    "backbone": "resnet18",
+    "num_classes": 4,
+    "class_names": [
+        "normal",
+        "tumor_glioma",
+        "tumor_meningioma",
+        "tumor_pituitary"
+    ]
+}

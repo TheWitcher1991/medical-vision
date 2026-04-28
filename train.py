@@ -9,6 +9,8 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from tqdm import tqdm
 
+import json
+
 from model import MedClsNet
 
 os.environ["KAGGLE_API_TOKEN"] = "KGAT_b465f7cb751f72901abbb4220b551af0"
@@ -16,10 +18,21 @@ os.environ["KAGGLEHUB_CACHE"] = "./datasets"
 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 BATCH_SIZE = 16
 EPOCHS = 10
 LR = 1e-4
-NUM_CLASSES = 8
+
+
+CLASS_NAMES = [
+    "normal",
+    "tumor_glioma",
+    "tumor_meningioma",
+    "tumor_pituitary"
+]
+
+NUM_CLASSES = len(CLASS_NAMES)
+
 
 CONFIG = {
     "img_size": 224,
@@ -27,42 +40,82 @@ CONFIG = {
     "lr": LR,
     "epochs": EPOCHS,
     "backbone": "resnet18",
+    "num_classes": NUM_CLASSES,
+    "class_names": CLASS_NAMES
 }
 
-transform = transforms.Compose(
-    [
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-    ]
-)
+
+
+LABEL_MAP = {
+    "yes": "tumor",
+    "no": "normal",
+    "glioma": "tumor_glioma",
+    "meningioma": "tumor_meningioma",
+    "pituitary": "tumor_pituitary",
+    "notumor": "normal"
+}
+
+
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+])
+
+
+class MappedImageFolder(ImageFolder):
+    def __getitem__(self, index):
+        x, y = super().__getitem__(index)
+
+        original_class = self.classes[y]
+        mapped_class = LABEL_MAP.get(original_class, None)
+
+        if mapped_class is None:
+            raise ValueError(f"Unknown class: {original_class}")
+
+        new_label = CLASS_NAMES.index(mapped_class)
+
+        return x, new_label
+
 
 
 def load_dataset(path):
-    dataset = ImageFolder(root=path, transform=transform)
 
-    class_names = dataset.classes
+    train_path = os.path.join(path, "Training")
+    test_path = os.path.join(path, "Testing")
 
-    print("\n📊 Dataset classes:")
-    for i, cls in enumerate(class_names):
-        print(f"  [{i}] {cls}")
+    train_dataset = MappedImageFolder(train_path, transform=transform)
+    test_dataset = MappedImageFolder(test_path, transform=transform)
 
-    targets = [y for _, y in dataset.samples]
+    print("\n📊 Mapped classes:")
+    for i, cls in enumerate(CLASS_NAMES):
+        print(f"[{i}] {cls}")
 
-    counts = Counter(targets)
+    print("\n📈 Train distribution:")
 
-    print("\n📈 Class distribution:")
+    train_counts = Counter([y for _, y in train_dataset])
+    for i, cls in enumerate(CLASS_NAMES):
+        print(f"{cls}: {train_counts[i]}")
 
-    for i, cls in enumerate(class_names):
-        print(f"  {cls}: {counts[i]} images")
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=4
+    )
 
-    loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=4
+    )
 
-    return loader, class_names
+    return train_loader, test_loader
 
 
 def train_one_epoch(model, loader, optimizer, criterion):
-    model.train()
 
+    model.train()
     total_loss = 0
 
     loop = tqdm(loader, desc="Training", leave=False)
@@ -73,71 +126,52 @@ def train_one_epoch(model, loader, optimizer, criterion):
         optimizer.zero_grad()
 
         out = model(x)
-
         loss = criterion(out, y)
 
         loss.backward()
-
         optimizer.step()
 
         total_loss += loss.item()
-
         loop.set_postfix(loss=loss.item())
 
     return total_loss / len(loader)
 
 
-def train_on_datasets(dataset_list):
+def train():
+
     model = MedClsNet(num_classes=NUM_CLASSES).to(DEVICE)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     criterion = nn.CrossEntropyLoss()
 
-    all_classes = set()
-
-    for dataset_name in dataset_list:
-        print(f"\n📦 Downloading dataset: {dataset_name}")
-
-        path = dataset_download(dataset_name)
-
-        print(f"📂 Loaded at: {path}")
-
-        loader, class_names = load_dataset(path)
-
-        all_classes.update(class_names)
-
-        print(f"🔢 Classes found: {len(class_names)}")
-
-        for epoch in range(EPOCHS):
-            loss = train_one_epoch(model, loader, optimizer, criterion)
-
-            print(f"[{dataset_name}] Epoch {epoch + 1}/{EPOCHS} - Loss: {loss:.4f}")
-
-    # ----------------------------
-    # SAVE MODEL
-    # ----------------------------
-    torch.save(model.state_dict(), "medclsnet_final.pth")
-
-    # ----------------------------
-    # SAVE CONFIG JSON
-    # ----------------------------
-    config = {
-        **CONFIG,
-        "num_classes": NUM_CLASSES,
-        "class_names": sorted(list(all_classes)),
-    }
-
-    with open("medclsnet_config.json", "w") as f:
-        json.dump(config, f, indent=4)
-
-    print("✅ Model saved!")
-    print("🧾 Config saved to medclsnet_config.json")
-
-
-if __name__ == "__main__":
     datasets = [
-        "navoneel/brain-mri-images-for-brain-tumor-detection",
         "masoudnickparvar/brain-tumor-mri-dataset",
     ]
 
-    train_on_datasets(datasets)
+    for dataset_name in datasets:
+
+        print(f"\n📦 Downloading: {dataset_name}")
+
+        path = dataset_download(dataset_name)
+
+        print(f"📂 Path: {path}")
+
+        train_loader, test_loader = load_dataset(path)
+
+        for epoch in range(EPOCHS):
+
+            loss = train_one_epoch(model, train_loader, optimizer, criterion)
+
+            print(f"[{dataset_name}] Epoch {epoch+1}/{EPOCHS} | Loss: {loss:.4f}")
+
+    torch.save(model.state_dict(), "medclsnet.pth")
+
+    with open("medclsnet_config.json", "w") as f:
+        json.dump(CONFIG, f, indent=4)
+
+    print("\n✅ Model saved: medclsnet.pth")
+    print("🧾 Config saved")
+
+
+if __name__ == "__main__":
+    train()
