@@ -1,3 +1,4 @@
+import json
 import os
 from collections import Counter
 
@@ -8,8 +9,6 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from tqdm import tqdm
-
-import json
 
 from model import MedClsNet
 
@@ -24,12 +23,7 @@ EPOCHS = 10
 LR = 1e-4
 
 
-CLASS_NAMES = [
-    "normal",
-    "tumor_glioma",
-    "tumor_meningioma",
-    "tumor_pituitary"
-]
+CLASS_NAMES = ["normal", "tumor_glioma", "tumor_meningioma", "tumor_pituitary"]
 
 NUM_CLASSES = len(CLASS_NAMES)
 
@@ -41,9 +35,8 @@ CONFIG = {
     "epochs": EPOCHS,
     "backbone": "resnet18",
     "num_classes": NUM_CLASSES,
-    "class_names": CLASS_NAMES
+    "class_names": CLASS_NAMES,
 }
-
 
 
 LABEL_MAP = {
@@ -52,14 +45,16 @@ LABEL_MAP = {
     "glioma": "tumor_glioma",
     "meningioma": "tumor_meningioma",
     "pituitary": "tumor_pituitary",
-    "notumor": "normal"
+    "notumor": "normal",
 }
 
 
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-])
+transform = transforms.Compose(
+    [
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+    ]
+)
 
 
 class MappedImageFolder(ImageFolder):
@@ -75,7 +70,6 @@ class MappedImageFolder(ImageFolder):
         new_label = CLASS_NAMES.index(mapped_class)
 
         return x, new_label
-
 
 
 def load_dataset(path):
@@ -97,17 +91,11 @@ def load_dataset(path):
         print(f"{cls}: {train_counts[i]}")
 
     train_loader = DataLoader(
-        train_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        num_workers=4
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4
     )
 
     test_loader = DataLoader(
-        test_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        num_workers=4
+        test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4
     )
 
     return train_loader, test_loader
@@ -146,10 +134,10 @@ def train():
 
     datasets = [
         "masoudnickparvar/brain-tumor-mri-dataset",
+        "volodymyrpivoshenko/skin-cancer-lesions-segmentation",
     ]
 
     for dataset_name in datasets:
-
         print(f"\n📦 Downloading: {dataset_name}")
 
         path = dataset_download(dataset_name)
@@ -159,10 +147,9 @@ def train():
         train_loader, test_loader = load_dataset(path)
 
         for epoch in range(EPOCHS):
-
             loss = train_one_epoch(model, train_loader, optimizer, criterion)
 
-            print(f"[{dataset_name}] Epoch {epoch+1}/{EPOCHS} | Loss: {loss:.4f}")
+            print(f"[{dataset_name}] Epoch {epoch + 1}/{EPOCHS} | Loss: {loss:.4f}")
 
     torch.save(model.state_dict(), "medclsnet.pth")
 
