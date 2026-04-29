@@ -24,6 +24,10 @@ CLASS_MAP = {
     "tumor_pituitary": "Опухоль гипофиза",
 }
 
+
+CLASS_NAMES = ["normal", "tumor_glioma", "tumor_meningioma", "tumor_pituitary"]
+
+
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
